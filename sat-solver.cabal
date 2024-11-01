@@ -70,7 +70,9 @@ executable sat-solver
     -- Other library packages from which modules are imported.
     build-depends:    base ^>= 4.17,
                       mtl ^>= 2.3,
-                      containers ^>= 0.7
+                      containers ^>= 0.7,
+                      extra ^>= 1.8,
+                      applicative-logic ^>= 0.1
 
     -- Directories containing source files.
     hs-source-dirs:   app
