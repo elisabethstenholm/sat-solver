@@ -1,6 +1,8 @@
 module CDCL where
 
+import Control.Applicative (Alternative (..))
 import Control.Applicative.Logic
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Map (Map)
@@ -11,7 +13,9 @@ import Data.Tuple.Extra
 import Prelude hiding (any)
 
 -- A literal is either a variable or its negation
-data Literal a = Var a | Neg a
+data Literal a
+  = Var a
+  | Neg a
   deriving (Eq, Ord)
 
 instance (Show a) => Show (Literal a) where
@@ -38,7 +42,9 @@ type Formula a = Set (Clause a)
 
 -- The antecedent of a variable assignment is either a decision
 -- or a clause that implies it through unit resolution
-data Antecedent a = Implied (Clause a) | Decision
+data Antecedent a
+  = Implied (Clause a)
+  | Decision
 
 -- Assignment of a variable to a bool and an antecedent
 type Assignment a = Map a (Bool, Antecedent a)
@@ -48,17 +54,28 @@ type DecisionSeq a = [Assignment a]
 
 -- Conclusion of the algorithm; either gives an assignment of values satisfying
 -- the formula, or concludes that the formula is unsatisfiable
-data Conclusion a = Satisfiable (Set (Literal a)) | Unsatisfiable
+data Conclusion a
+  = Satisfiable a
+  | Unsatisfiable
+  deriving (Show)
 
 instance Functor Conclusion where
-  fmap f (Satisfiable lits) = Satisfiable _
+  fmap f (Satisfiable x) = Satisfiable (f x)
+  fmap _ Unsatisfiable = Unsatisfiable
 
 instance Applicative Conclusion where
-  pure = _
-  (<*>) = _
+  pure = Satisfiable
+  Satisfiable f <*> x = f <$> x
+  Unsatisfiable <*> _ = Unsatisfiable
 
 instance Monad Conclusion where
-  x >>= f = _
+  Satisfiable x >>= f = f x
+  Unsatisfiable >>= _ = Unsatisfiable
+
+instance Alternative Conclusion where
+  empty = Unsatisfiable
+  Unsatisfiable <|> x = x
+  x <|> _ = x
 
 -- Extract the set of variables from a formula
 variables :: (Ord a) => Formula a -> Set a
@@ -67,33 +84,34 @@ variables = Set.unions . Set.map (Set.map litToVar)
 -- Condition a formula on a set of literals
 condition :: (Ord a) => Formula a -> Set (Literal a) -> Formula a
 condition formula lits =
-  Set.map (`Set.difference` Set.map neg lits) $ Set.filter (Set.disjoint lits) formula
+  Set.map (`Set.difference` Set.map neg lits) $
+    Set.filter (Set.disjoint lits) formula
 
 -- Unit resolution
 unitResolution :: (Ord a) => Formula a -> (Set (Literal a), Formula a)
 unitResolution formula =
-  let (lits, nonUnitClauses) = first Set.unions $ Set.partition ((== 1) . Set.size) formula
+  let (lits, nonUnitClauses) =
+        first Set.unions $ Set.partition ((== 1) . Set.size) formula
    in if null lits
         then (Set.empty, formula)
         else
-          let (lits', formula') = unitResolution $ condition nonUnitClauses lits
+          let (lits', formula') =
+                unitResolution $ condition nonUnitClauses lits
            in (Set.union lits lits', formula')
 
-dpll :: (Ord a) => Formula a -> Conclusion a
-dpll formula =
+chooseLit :: Set a -> Maybe (Literal a)
+chooseLit = fmap Var . convert
+
+dpll :: (Ord a) => Formula a -> Conclusion (Set (Literal a))
+dpll formula = do
   let (lits, formula') = unitResolution formula
-   in case convert (Set.unions formula') of
-        Nothing -> Satisfiable lits
-        Just l ->
-          if Set.empty `Set.member` formula'
-            then Unsatisfiable
-            else _
-
-{- cdcl ::
-  StateT
-    (Formula a)
-    (Reader (Formula a, Set a, Assignment a, CurrentLevel))
-    (Conclusion a)
-cdcl = do
-
-  _ -}
+  guard $ Set.empty `Set.notMember` formula'
+  case chooseLit (variables formula') of
+    Nothing -> Satisfiable lits
+    Just l ->
+      dpllAssuming formula' lits l
+        <|> dpllAssuming formula' lits (neg l)
+  where
+    dpllAssuming formula' lits l = do
+      lits' <- dpll (condition formula' (Set.singleton l))
+      Satisfiable $ Set.unions [lits, lits', Set.singleton l]
