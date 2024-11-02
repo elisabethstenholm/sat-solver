@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 module CDCL where
 
 import Control.Applicative (Alternative (..))
@@ -33,6 +35,17 @@ litToVar (Neg x) = x
 neg :: Literal a -> Literal a
 neg (Var x) = Neg x
 neg (Neg x) = Var x
+
+assignBool :: Literal a -> (a, Bool)
+assignBool (Var x) = (x, True)
+assignBool (Neg x) = (x, False)
+
+assToLit :: (a, Bool) -> Literal a
+assToLit (x, True) = Var x
+assToLit (x, False) = Neg x
+
+assignBools :: (Ord a) => Set (Literal a) -> Map a Bool
+assignBools = Map.fromAscList . Set.toAscList . Set.map assignBool
 
 -- A clause is a set of literals; {a,b,c} corresponds to (a ∨ b ∨ c)
 type Clause a = Set (Literal a)
@@ -96,19 +109,20 @@ unitResolution formula =
             unitResolution $ condition formula l
        in (Set.insert l lits', formula')
 
-chooseLit :: Set a -> Maybe (Literal a)
-chooseLit = fmap Var . convert
+assignVar :: Set a -> Maybe (a, Bool)
+assignVar = fmap (,True) . convert
 
-dpll :: (Ord a) => Formula a -> Conclusion (Set (Literal a))
+dpll :: (Ord a) => Formula a -> Conclusion (Map a Bool)
 dpll formula = do
   let (lits, formula') = unitResolution formula
   guard $ Set.empty `Set.notMember` formula'
-  case chooseLit (variables formula') of
-    Nothing -> Satisfiable lits
-    Just l ->
-      dpllAssuming formula' lits l
-        <|> dpllAssuming formula' lits (neg l)
+  let ass = assignBools lits
+  case assignVar (variables formula') of
+    Nothing -> Satisfiable ass
+    Just x ->
+      dpllAssuming formula' ass x
+        <|> dpllAssuming formula' ass (second not x)
   where
-    dpllAssuming formula' lits l = do
-      lits' <- dpll (condition formula' l)
-      Satisfiable $ Set.unions [lits, lits', Set.singleton l]
+    dpllAssuming formula' ass x = do
+      ass' <- dpll (condition formula' (assToLit x))
+      Satisfiable $ Map.unions [ass, ass', uncurry Map.singleton x]
