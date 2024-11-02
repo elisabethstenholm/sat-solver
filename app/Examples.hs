@@ -1,7 +1,7 @@
 module Examples where
 
-import CDCL
 import qualified Data.Set as Set
+import Types
 
 -- A ∨ ¬A
 -- Satisfiable {A ↦ True}
