@@ -81,23 +81,20 @@ instance Alternative Conclusion where
 variables :: (Ord a) => Formula a -> Set a
 variables = Set.unions . Set.map (Set.map litToVar)
 
--- Condition a formula on a set of literals
-condition :: (Ord a) => Formula a -> Set (Literal a) -> Formula a
-condition formula lits =
-  Set.map (`Set.difference` Set.map neg lits) $
-    Set.filter (Set.disjoint lits) formula
+-- Condition a formula on a literal
+condition :: (Ord a) => Formula a -> Literal a -> Formula a
+condition formula l =
+  Set.map (Set.delete (neg l)) $ Set.filter (Set.notMember l) formula
 
 -- Unit resolution
 unitResolution :: (Ord a) => Formula a -> (Set (Literal a), Formula a)
 unitResolution formula =
-  let (lits, nonUnitClauses) =
-        first Set.unions $ Set.partition ((== 1) . Set.size) formula
-   in if null lits
-        then (Set.empty, formula)
-        else
-          let (lits', formula') =
-                unitResolution $ condition nonUnitClauses lits
-           in (Set.union lits lits', formula')
+  case convert (Set.unions $ Set.filter ((== 1) . Set.size) formula) of
+    Nothing -> (Set.empty, formula)
+    Just l ->
+      let (lits', formula') =
+            unitResolution $ condition formula l
+       in (Set.insert l lits', formula')
 
 chooseLit :: Set a -> Maybe (Literal a)
 chooseLit = fmap Var . convert
@@ -113,5 +110,5 @@ dpll formula = do
         <|> dpllAssuming formula' lits (neg l)
   where
     dpllAssuming formula' lits l = do
-      lits' <- dpll (condition formula' (Set.singleton l))
+      lits' <- dpll (condition formula' l)
       Satisfiable $ Set.unions [lits, lits', Set.singleton l]
