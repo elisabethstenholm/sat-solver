@@ -41,6 +41,14 @@ assignBool (Neg x) = (x, False)
 assignBools :: (Ord a) => Set (Literal a) -> Map a Bool
 assignBools = Map.fromAscList . Set.toAscList . Set.map assignBool
 
+-- Evaluate a literal given an assignment to the variable
+evalLit :: Literal a -> Bool -> Bool
+evalLit (Var _) = id
+evalLit (Neg _) = not
+
+eval :: (Ord a) => Literal a -> Map a Bool -> Maybe Bool
+eval x varAss = evalLit x <$> Map.lookup (litToVar x) varAss
+
 -- A clause is a set of literals; {a,b,c} corresponds to (a ∨ b ∨ c)
 type Clause a = Set (Literal a)
 
