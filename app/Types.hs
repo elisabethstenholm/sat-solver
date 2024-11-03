@@ -38,9 +38,6 @@ assignBool :: Literal a -> (a, Bool)
 assignBool (Var x) = (x, True)
 assignBool (Neg x) = (x, False)
 
-assignBools :: (Ord a) => Set (Literal a) -> Map a Bool
-assignBools = Map.fromAscList . Set.toAscList . Set.map assignBool
-
 -- Evaluate a literal given an assignment to the variable
 evalLit :: Literal a -> Bool -> Bool
 evalLit (Var _) = id

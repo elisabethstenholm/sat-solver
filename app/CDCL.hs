@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 module CDCL where
 
 import Control.Applicative
@@ -14,90 +16,87 @@ import Data.Tuple.Extra
 import Types
 import Prelude hiding (any)
 
--- Enumerated clauses
-type NumberedClauses a = Map Integer (Clause a)
-
--- Enumerate the clauses in a formula
-numberClauses :: Formula a -> NumberedClauses a
-numberClauses = Map.fromAscList . zip [1 ..] . Set.toAscList
-
--- Maps a literal to the set of (identifiers of) clauses it is watched by
-type Watched a = Map (Literal a) (Set Integer)
-
--- Check if a given literal can be assigned as watched
-canBeWatched ::
-  (Ord a) =>
-  Watched a ->
-  Map a Bool ->
-  Integer ->
-  Literal a ->
-  Conclusion (Maybe (Literal a))
-canBeWatched w varAss n l = do
-  let isWatched = maybe False (n `Set.member`) (Map.lookup l w)
-  let maybeVal = eval l varAss
-  case (isWatched, maybeVal) of
-    (_, Just True) -> return Nothing
-    (True, Nothing) -> return Nothing
-    (False, Nothing) -> return (Just l)
-    (False, Just False) -> return Nothing
-    (True, Just False) -> Unsatisfiable
-
--- Find a new literal in the clause to watch,
--- there may be none, in which case it is a unit clause,
--- or the clause is discovered to be falsified
-findNewLiteral ::
-  (Ord a) =>
-  Watched a ->
-  Map a Bool ->
-  Integer ->
-  Clause a ->
-  Conclusion (Maybe (Literal a))
-findNewLiteral w varAss n c = do
-  maybeLits <- sequence <$> mapM (canBeWatched w varAss n) (Set.toList c)
-  return (maybeLits >>= listToMaybe)
-
-{-
-Go through the set of literals in the clause and for each:
-- check if evaluated to True, in which case do nothing
-- check if already watched
-  - if evaluated to False, return Unsatisfied
-  - otherwise, move on
-- check if evaluated to False, in which case move on
-Terminate if finding any unassigned and unwatched literal
-If no such is found, declare unit clause
-   -}
-
--- Given an assignment of a boolean to a variable, update the clauses
--- watching the falsified literal and return literals of unit clauses
-updateWatchers ::
-  (Ord a) =>
-  NumberedClauses a ->
-  Watched a ->
-  Map a Bool ->
-  Literal a ->
-  Conclusion (Watched a, Set (Literal a))
-updateWatchers clauseMap w varAss l =
-  case Map.lookup l w of
-    Nothing -> return (w, Set.empty)
-    Just cs -> do
-      let cs' = second (Set.delete l) <$> Map.toList (Map.restrictKeys clauseMap cs)
-      foldr combine (return (w, Set.empty)) cs'
-      where
-        combine (n, c) x = do
-          (w', units) <- x
-          maybeLit <- findNewLiteral w' varAss n c
-          case maybeLit of
-            Nothing -> return (w', _)
-            Just l' -> _
+type LabeledClauses label a = Map label (Clause a)
 
 -- The antecedent of a variable assignment is either a decision
 -- or a clause that implies it through unit resolution
-data Antecedent a
-  = Implied (Clause a)
+data Antecedent label
+  = Implied label
   | Decision
 
 -- Assignment of a variable to a bool and an antecedent
-type Assignment a = Map a (Bool, Antecedent a)
+type Assignment label a = Map a (Bool, Antecedent label)
 
 -- The decision sequence is the list of assignments made during the search
-type DecisionSeq a = [Assignment a]
+type DecisionSeq label a = [Assignment label a]
+
+-- Extract the set of variables from a formula
+variables :: (Ord a) => Formula a -> Set a
+variables = Set.unions . Set.map (Set.map litToVar)
+
+-- Condition a formula on a literal
+condition :: (Ord a) => Formula a -> Literal a -> Formula a
+condition formula l =
+  Set.map (Set.delete (neg l)) $ Set.filter (Set.notMember l) formula
+
+conflictAnalysisAux :: Map a (Clause a) -> ([a], Set (Literal a)) -> ([a], Set (Literal a))
+conflictAnalysisAux ([], lits) = ([], lits)
+conflictAnalysisAux (x : xs, lits) = _
+
+-- conflictAnalysis ::
+--   (Ord label, Ord a) =>
+--   LabeledClauses label a ->
+--   DecisionSeq label a ->
+--   label ->
+--   Maybe (DecisionSeq label a, Clause a)
+-- conflictAnalysis clauseMap ds l = do
+--   c <- Map.lookup l clauseMap
+--   let vc = Set.toList $ Set.map litToVar c
+--   let foo = map _ vc
+--   _
+
+-- Unit resolution
+-- unitResolution :: (Ord a) => Set label -> State (LabeledClauses label a) (Assignment label a)
+-- unitResolution ls = do
+--   clauseMap <- get
+--   _
+
+-- case convert (Map.filter ((== 1) . Set.size) $ Map.restrictKeys clauseMap ls) of
+--   Nothing -> return (Map.empty, ls)
+--   Just x -> _
+
+{-   case convert (Set.unions $ Set.filter ((== 1) . Set.size) formula) of
+    Nothing -> (Set.empty, formula)
+    Just l ->
+      let (lits', formula') =
+            unitResolution $ condition formula l
+       in (Set.insert l lits', formula') -}
+
+-- Assign a boolean to a variable
+-- assignVar :: Set a -> Maybe (a, Bool)
+-- assignVar = fmap (,True) . convert
+
+-- assignBools :: Set (Literal a) -> Assignment a
+-- assignBools = _
+
+-- cdcl :: Formula a -> StateT (DecisionSeq label a) Conclusion (Map a Bool)
+-- cdcl formula = do
+--   let (lits, formula') = unitResolution formula
+--   guard $ Set.empty `Set.notMember` formula'
+--   let ass = assignBools lits
+--   case assignVar (variables formula') of
+--     Nothing -> Satisfiable ass
+--     Just x ->
+--       dpllAssuming formula' ass x
+--         <|> dpllAssuming formula' ass (second not x)
+--   where
+--     dpllAssuming formula' ass x = do
+--       ass' <- dpll (condition formula' (assToLit x))
+--       Satisfiable $ Map.unions [ass, ass', uncurry Map.singleton x]
+
+{-
+Unit resolution on the formula (updates assignments at current level)
+Assign value to unassigned variable
+Unit resolution
+- If conflict found do conflict analysis, add to formula, then backtrack
+ -}

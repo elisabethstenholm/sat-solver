@@ -35,6 +35,9 @@ unitResolution formula =
 assignVar :: Set a -> Maybe (a, Bool)
 assignVar = fmap (,True) . convert
 
+assignBools :: (Ord a) => Set (Literal a) -> Map a Bool
+assignBools = Map.fromAscList . Set.toAscList . Set.map assignBool
+
 -- The DPLL algorithm
 dpll :: (Ord a) => Formula a -> Conclusion (Map a Bool)
 dpll formula = do
